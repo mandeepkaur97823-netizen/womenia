@@ -10,7 +10,7 @@ echo.
 echo ===================================================
 echo       WOMANIA BOUTIQUE - PUSH TO GITHUB
 echo ===================================================
-echo Remote: https://github.com/mandeepkaur97823-netizen/womenia
+echo Remote: git@github.com:mandeepkaur97823-netizen/womenia.git
 echo Branch: main
 echo.
 
@@ -21,19 +21,7 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-echo ---------------------------------------------------
-echo  [IMPORTANT GITHUB AUTHENTICATION NOTE]
-echo  When prompted by Git:
-echo    - Username: mandeepkaur97823-netizen
-echo    - Password: Paste your GitHub Personal Access Token (PAT)
-echo                (Note: characters won't show while pasting)
-echo.
-echo  If you need a token, create one with 'repo' scope at:
-echo  https://github.com/settings/tokens
-echo ---------------------------------------------------
-echo.
-echo Contacting GitHub...
-
+echo Pushing code to GitHub via SSH...
 git push -u origin main
 
 echo.
@@ -44,16 +32,10 @@ if %ERRORLEVEL% equ 0 (
     echo ===================================================
 ) else (
     echo ===================================================
-    echo  [AUTHENTICATION REQUIRED]
-    echo  GitHub requires authentication to push to this repository.
-    echo.
-    echo  Option A: Create a Personal Access Token (PAT) at:
-    echo            https://github.com/settings/tokens
-    echo            (Scope: repo / contents:write)
-    echo            Then paste the token when prompted for Password.
-    echo.
-    echo  Option B: Run in PowerShell:
-    echo            git push https://<YOUR_TOKEN>@github.com/mandeepkaur97823-netizen/womenia.git main
+    echo  [SSH KEY CHECK]
+    echo  If this is your first time, make sure you have added your
+    echo  SSH public key to your GitHub account:
+    echo    https://github.com/settings/ssh/new
     echo ===================================================
 )
 echo.
