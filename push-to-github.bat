@@ -21,9 +21,18 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-echo Pushing code to GitHub...
-echo (If prompted for password, enter your GitHub Personal Access Token)
+echo ---------------------------------------------------
+echo  [IMPORTANT GITHUB AUTHENTICATION NOTE]
+echo  When prompted by Git:
+echo    - Username: mandeepkaur97823-netizen
+echo    - Password: Paste your GitHub Personal Access Token (PAT)
+echo                (Note: characters won't show while pasting)
 echo.
+echo  If you need a token, create one with 'repo' scope at:
+echo  https://github.com/settings/tokens
+echo ---------------------------------------------------
+echo.
+echo Contacting GitHub...
 
 git push -u origin main
 
