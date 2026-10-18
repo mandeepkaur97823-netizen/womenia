@@ -19,11 +19,12 @@ echo   [3] Open WOMANIA in Default Browser (http://localhost:8080)
 echo   [4] Open Admin Dashboard (http://localhost:8080/admin)
 echo   [5] Run Health Diagnostics ^& Automated Tests
 echo   [6] Create / Refresh Desktop Shortcut
-echo   [7] View Localhost Guide ^& Documentation
-echo   [8] Exit
+echo   [7] Push Project to GitHub (mandeepkaur97823-netizen/womenia)
+echo   [8] View Localhost Guide ^& Documentation
+echo   [9] Exit
 echo.
 echo =====================================================================
-set /p choice="Select an option [1-8]: "
+set /p choice="Select an option [1-9]: "
 
 if "%choice%"=="1" goto start_dev
 if "%choice%"=="2" goto start_prod
@@ -31,10 +32,11 @@ if "%choice%"=="3" goto open_browser
 if "%choice%"=="4" goto open_admin
 if "%choice%"=="5" goto run_tests
 if "%choice%"=="6" goto create_shortcut
-if "%choice%"=="7" goto view_guide
-if "%choice%"=="8" exit /b 0
+if "%choice%"=="7" goto push_github
+if "%choice%"=="8" goto view_guide
+if "%choice%"=="9" exit /b 0
 
-echo Invalid choice. Please enter a number between 1 and 8.
+echo Invalid choice. Please enter a number between 1 and 9.
 ping 127.0.0.1 -n 2 >nul
 goto menu
 
@@ -100,6 +102,11 @@ goto menu
 cls
 echo [WOMANIA] Creating Desktop Shortcut...
 call "%~dp0create-desktop-shortcut.bat"
+goto menu
+
+:push_github
+cls
+call "%~dp0push-to-github.bat"
 goto menu
 
 :view_guide
