@@ -578,19 +578,32 @@ export function CollectionsPreview() {
               </div>
               <div className="lookbook-info">
                 <div>
-                  <h3 className="lookbook-title">{item.name}</h3>
+                  <div className="lookbook-title-row">
+                    <h3 className="lookbook-title">{item.name}</h3>
+                    {item.price && (
+                      <span className="lookbook-price">₹{item.price.toLocaleString("en-IN")}</span>
+                    )}
+                  </div>
                   <p className="lookbook-desc">{item.description}</p>
                 </div>
                 <div className="lookbook-actions">
                   <a
-                    href={whatsappHref(item.name)}
+                    href={whatsappHref(
+                      `${item.name}${item.price ? ` (Price: ₹${item.price.toLocaleString("en-IN")})` : ""}`
+                    )}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="lookbook-enquire-btn"
                   >
-                    <span>Enquire Availability</span>
+                    <span>Enquire on WhatsApp</span>
                     <ArrowUpRight size={15} />
                   </a>
+                  <Button asChild size="sm" className="lookbook-shop-link-btn">
+                    <Link to="/shop">
+                      <ShoppingBag size={14} />
+                      <span>Shop</span>
+                    </Link>
+                  </Button>
                 </div>
               </div>
             </div>
