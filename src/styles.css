@@ -3514,6 +3514,45 @@ em {
 .admin-receipt-btn:hover {
   background: rgba(255, 255, 255, 0.12);
 }
+.admin-order-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #f87171;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: 6px;
+}
+.admin-order-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #ffffff;
+}
+.admin-order-delete-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #f87171;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.admin-order-delete-action-btn:hover {
+  background: rgba(239, 68, 68, 0.28);
+  border-color: rgba(239, 68, 68, 0.65);
+  color: #ffffff;
+}
 
 /* Enquiries Tab */
 .admin-enquiries-list {

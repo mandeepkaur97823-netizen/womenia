@@ -60,13 +60,14 @@ ALTER TABLE public.enquiries ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public can insert orders" ON public.orders;
 DROP POLICY IF EXISTS "Public can view orders" ON public.orders;
 DROP POLICY IF EXISTS "Public can update orders" ON public.orders;
+DROP POLICY IF EXISTS "Public can delete orders" ON public.orders;
 
 DROP POLICY IF EXISTS "Public can insert enquiries" ON public.enquiries;
 DROP POLICY IF EXISTS "Public can view enquiries" ON public.enquiries;
 DROP POLICY IF EXISTS "Public can update enquiries" ON public.enquiries;
 DROP POLICY IF EXISTS "Public can delete enquiries" ON public.enquiries;
 
--- Allow anonymous customer checkout & admin reading/updating
+-- Allow anonymous customer checkout & admin reading/updating/deleting
 CREATE POLICY "Public can insert orders" ON public.orders
     FOR INSERT WITH CHECK (true);
 
@@ -75,6 +76,10 @@ CREATE POLICY "Public can view orders" ON public.orders
 
 CREATE POLICY "Public can update orders" ON public.orders
     FOR UPDATE USING (true);
+
+CREATE POLICY "Public can delete orders" ON public.orders
+    FOR DELETE USING (true);
+
 
 -- Enquiries policies
 CREATE POLICY "Public can insert enquiries" ON public.enquiries

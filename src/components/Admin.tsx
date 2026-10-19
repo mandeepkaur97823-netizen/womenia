@@ -67,9 +67,11 @@ import {
   fetchCloudOrders,
   createCloudOrder,
   updateCloudOrderStatus,
+  deleteCloudOrder,
   subscribeToOrders,
   fetchCloudEnquiries,
 } from "@/lib/supabase";
+
 import { SupabaseSyncModal } from "@/components/SupabaseSyncModal";
 import { Database } from "lucide-react";
 
@@ -386,6 +388,32 @@ export function AdminPage() {
       setEnquiries((prev) => prev.filter((e) => e.id !== id));
     }
   };
+
+  // Delete order permanently from local state and Supabase Cloud
+  const handleDeleteOrder = (orderId: string, customerName?: string) => {
+    const confirmMsg = customerName
+      ? `Are you sure you want to delete Order #${orderId} (${customerName})? This will permanently remove it from your order history.`
+      : `Are you sure you want to delete Order #${orderId}? This cannot be undone.`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    // 1. Instant optimistic UI update
+    const updated = orders.filter((o) => o.orderId !== orderId);
+    setOrders(updated);
+
+    // 2. Remove from local storage
+    try {
+      localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+
+    // 3. Delete from Supabase Cloud
+    deleteCloudOrder(orderId).catch((err) => {
+      console.warn("Could not delete order from Supabase:", err);
+    });
+  };
+
 
 
   // Calculations for KPI Cards
@@ -756,7 +784,18 @@ export function AdminPage() {
                             <option value="Delivered">📦 Delivered (Done)</option>
                             <option value="Cancelled">❌ Cancelled</option>
                           </select>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteOrder(order.orderId, order.customerName)}
+                            className="admin-order-delete-btn"
+                            title="Delete this order permanently"
+                          >
+                            <Trash2 size={13} />
+                            <span>Delete</span>
+                          </button>
                         </div>
+
                       </div>
 
                       {/* Cancelled Alert in Admin */}
@@ -867,7 +906,18 @@ export function AdminPage() {
                           <Printer size={15} />
                           <span>Print Order</span>
                         </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteOrder(order.orderId, order.customerName)}
+                          className="admin-order-delete-action-btn"
+                          title="Delete this order permanently from history"
+                        >
+                          <Trash2 size={14} />
+                          <span>Delete Order</span>
+                        </button>
                       </div>
+
                     </div>
                   );
                 })}

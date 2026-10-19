@@ -354,6 +354,28 @@ export async function updateCloudOrderStatus(
 }
 
 /**
+ * Permanently delete an order from Supabase Cloud
+ */
+export async function deleteCloudOrder(orderId: string): Promise<{ success: boolean; error?: string }> {
+  const client = getSupabase();
+  if (!client) {
+    return { success: false, error: "Supabase not configured." };
+  }
+
+  try {
+    const { error } = await client.from("orders").delete().eq("order_id", orderId);
+    if (error) {
+      console.error("Supabase deleteCloudOrder error:", error);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error("Supabase deleteCloudOrder exception:", err);
+    return { success: false, error: err?.message || "Unknown error" };
+  }
+}
+
+/**
  * Fetch orders matching query (orderId or phone) from Supabase
  */
 export async function fetchCloudOrdersByQuery(query: string): Promise<OrderRecord[]> {
