@@ -4,6 +4,10 @@ import { type CustomerEnquiry } from "@/lib/analytics";
 
 export const WOMANIA_SUPABASE_CONFIG_KEY = "womania_supabase_config_v1";
 
+export const DEFAULT_SUPABASE_URL = "https://myvjrxwjtopahcfbubym.supabase.co";
+export const DEFAULT_SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im15dmpyeHdqdG9wYWhjZmJ1YnltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI0MjA2MTAsImV4cCI6MjEwNzk5NjYxMH0._WQ47flljbwTSIL_zQcyrbExaz1npzuemDFuZELPgV8";
+
 export type SupabaseConfig = {
   url: string;
   anonKey: string;
@@ -12,9 +16,10 @@ export type SupabaseConfig = {
 /**
  * Retrieve Supabase credentials.
  * Checks environment variables first (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY),
- * then falls back to localStorage configuration (for manual Admin setup).
+ * then falls back to localStorage configuration (for manual Admin setup),
+ * and finally defaults to the active project credentials.
  */
-export function getSupabaseCredentials(): SupabaseConfig | null {
+export function getSupabaseCredentials(): SupabaseConfig {
   const envUrl = (import.meta.env.VITE_SUPABASE_URL || "").trim();
   const envAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
 
@@ -36,8 +41,10 @@ export function getSupabaseCredentials(): SupabaseConfig | null {
     }
   }
 
-  return null;
+  // Active production credentials
+  return { url: DEFAULT_SUPABASE_URL, anonKey: DEFAULT_SUPABASE_ANON_KEY };
 }
+
 
 let cachedClient: SupabaseClient | null = null;
 let lastClientKey = "";
