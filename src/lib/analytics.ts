@@ -1,7 +1,8 @@
 /**
  * WOMANIA Boutique Analytics & Enquiries Management
- * Tracks visitors, page views, and customer enquiries in local storage.
+ * Tracks visitors, page views, and customer enquiries in local storage & Supabase cloud.
  */
+import { createCloudEnquiry, updateCloudEnquiryStatus, deleteCloudEnquiry } from "@/lib/supabase";
 
 export type PageViewRecord = {
   path: string;
@@ -183,6 +184,12 @@ export function saveEnquiry(newEnquiry: Omit<CustomerEnquiry, "id" | "date" | "s
   } catch {
     // ignore
   }
+
+  // Asynchronously sync enquiry to Supabase cloud
+  createCloudEnquiry(enquiry).catch((err) => {
+    console.warn("Could not sync enquiry to Supabase:", err);
+  });
+
   return enquiry;
 }
 
@@ -197,6 +204,10 @@ export function updateEnquiryStatus(id: string, status: CustomerEnquiry["status"
   } catch {
     // ignore
   }
+
+  updateCloudEnquiryStatus(id, status).catch((err) => {
+    console.warn("Could not update enquiry status in Supabase:", err);
+  });
 }
 
 /**
@@ -210,4 +221,9 @@ export function deleteEnquiry(id: string) {
   } catch {
     // ignore
   }
+
+  deleteCloudEnquiry(id).catch((err) => {
+    console.warn("Could not delete enquiry in Supabase:", err);
+  });
 }
+

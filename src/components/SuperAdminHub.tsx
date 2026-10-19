@@ -21,7 +21,10 @@ import {
   Bell,
   Sparkles,
   Lock,
+  Database,
 } from "lucide-react";
+import { isSupabaseConfigured, getSupabaseCredentials } from "@/lib/supabase";
+import { SupabaseSyncModal } from "@/components/SupabaseSyncModal";
 import {
   type SiteSettings,
   type AdminUser,
@@ -60,6 +63,7 @@ export function SuperAdminHub({ settings, onSettingsChange, session }: SuperAdmi
   const [announcement, setAnnouncement] = useState(settings.announcementText);
   const [allowOrders, setAllowOrders] = useState(settings.allowOrders);
   const [settingsSavedToast, setSettingsSavedToast] = useState(false);
+  const [supabaseModalOpen, setSupabaseModalOpen] = useState(false);
 
   // Sync settings if parent updates
   useEffect(() => {
@@ -415,9 +419,81 @@ export function SuperAdminHub({ settings, onSettingsChange, session }: SuperAdmi
       </div>
 
       {/* =====================================================================
+          SUPABASE CLOUD DATABASE SYNC SECTION (LIVE ORDERS PERSISTENCE)
+         ===================================================================== */}
+      <div className="bg-[#14110e] border border-[#b8925c]/35 rounded-2xl p-6 sm:p-8 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-5 border-b border-[#2b241c]">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#b8925c]/20 text-[#e2c288] flex items-center justify-center border border-[#b8925c]/40">
+              <Database size={22} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h3 className="text-lg font-bold text-[#f7f2ea]">
+                  Supabase Cloud Database & Live Order Sync
+                </h3>
+                <span
+                  className={`text-[11px] px-2.5 py-0.5 rounded-full font-semibold border ${
+                    isSupabaseConfigured()
+                      ? "bg-emerald-950/70 text-emerald-300 border-emerald-500/40"
+                      : "bg-amber-950/70 text-amber-300 border-amber-500/40"
+                  }`}
+                >
+                  {isSupabaseConfigured() ? "🟢 Connected & Live" : "🟡 Not Connected Yet"}
+                </span>
+              </div>
+              <p className="text-xs text-[#9a8c7b] mt-0.5">
+                Ensures every customer order placed on the live Vercel website is synchronized across all devices in real-time.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setSupabaseModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#b8925c] to-[#9c7846] hover:from-[#c9a36d] hover:to-[#ad8854] text-black font-semibold text-xs transition-all shadow-md shrink-0 cursor-pointer"
+          >
+            <Database size={15} />
+            <span>{isSupabaseConfigured() ? "Manage Supabase Cloud" : "Connect Supabase Database"}</span>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+          <div className="p-4 rounded-xl bg-[#0c0906] border border-[#2b241c] space-y-1.5">
+            <span className="text-[#8f7f6f] block text-[11px] font-semibold uppercase tracking-wider">
+              Sync Mode
+            </span>
+            <p className="text-[#e2c288] font-bold text-sm">
+              {isSupabaseConfigured()
+                ? "PostgreSQL Cloud + Realtime (All Devices Live)"
+                : "Local Cache Only (Orders isolated to customer phone)"}
+            </p>
+            <p className="text-[11px] text-[#9c8e7c]">
+              {isSupabaseConfigured()
+                ? "Orders from any visitor are stored in Supabase and pushed instantly to the Admin dashboard."
+                : "Link Supabase with your Project URL & Anon Key so orders show up in Admin immediately."}
+            </p>
+          </div>
+
+          <div className="p-4 rounded-xl bg-[#0c0906] border border-[#2b241c] space-y-1.5">
+            <span className="text-[#8f7f6f] block text-[11px] font-semibold uppercase tracking-wider">
+              Connected Project URL
+            </span>
+            <p className="text-[#cfc2b2] font-mono text-xs truncate">
+              {getSupabaseCredentials()?.url || "Not configured yet"}
+            </p>
+            <p className="text-[11px] text-[#9c8e7c]">
+              Managed via Vercel Environment Variables or Direct Admin Configuration.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* =====================================================================
           SECTION 2: MULTI-ADMIN MANAGEMENT
          ===================================================================== */}
       <div className="bg-[#14110e] border border-[#2b241c] rounded-2xl p-6 sm:p-8 shadow-xl">
+
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-[#b8925c]/15 text-[#e2c288] flex items-center justify-center">
@@ -608,6 +684,13 @@ export function SuperAdminHub({ settings, onSettingsChange, session }: SuperAdmi
           </form>
         </div>
       </div>
+
+      {/* Supabase Cloud Connection & Setup Modal */}
+      <SupabaseSyncModal
+        isOpen={supabaseModalOpen}
+        onClose={() => setSupabaseModalOpen(false)}
+      />
     </div>
   );
 }
+

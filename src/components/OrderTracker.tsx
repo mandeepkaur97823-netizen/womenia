@@ -25,7 +25,7 @@ import { business, whatsappHref } from "@/lib/womania";
 import { StylishGirlIcon } from "@/components/Site";
 
 export function OrderTrackerContent({ initialQuery }: { initialQuery?: string }) {
-  const { getOrdersByQuery, cancelOrder, recentOrder, pastOrders } = useCart();
+  const { getOrdersByQuery, getOrdersByQueryAsync, cancelOrder, recentOrder, pastOrders } = useCart();
   const [searchInput, setSearchInput] = useState(initialQuery || (recentOrder ? recentOrder.orderId : ""));
   const [activeOrder, setActiveOrder] = useState<OrderRecord | null>(recentOrder || null);
   const [matchedOrders, setMatchedOrders] = useState<OrderRecord[]>([]);
@@ -46,7 +46,7 @@ export function OrderTrackerContent({ initialQuery }: { initialQuery?: string })
     }
   }, [initialQuery, recentOrder]);
 
-  const handleSearch = (overrideQuery?: string) => {
+  const handleSearch = async (overrideQuery?: string) => {
     const q = overrideQuery !== undefined ? overrideQuery : searchInput;
     if (!q.trim()) {
       setActiveOrder(null);
@@ -55,17 +55,26 @@ export function OrderTrackerContent({ initialQuery }: { initialQuery?: string })
       return;
     }
 
-    const results = getOrdersByQuery(q);
-    setMatchedOrders(results);
+    // 1. Instant local search
+    const localResults = getOrdersByQuery(q);
+    setMatchedOrders(localResults);
     setHasSearched(true);
-    if (results.length === 1) {
-      setActiveOrder(results[0] || null);
-    } else if (results.length === 0) {
-      setActiveOrder(null);
-    } else {
-      // If active order is not in results, select first
-      if (!activeOrder || !results.some((r) => r.orderId === activeOrder.orderId)) {
-        setActiveOrder(results[0] || null);
+    if (localResults.length > 0) {
+      setActiveOrder(localResults[0] || null);
+    }
+
+    // 2. Query Supabase cloud to find orders placed on any customer device
+    if (getOrdersByQueryAsync) {
+      try {
+        const fullResults = await getOrdersByQueryAsync(q);
+        if (fullResults && fullResults.length > 0) {
+          setMatchedOrders(fullResults);
+          if (!activeOrder || !fullResults.some((r) => r.orderId === activeOrder.orderId)) {
+            setActiveOrder(fullResults[0] || null);
+          }
+        }
+      } catch {
+        // keep local results
       }
     }
   };

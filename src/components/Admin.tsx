@@ -62,6 +62,16 @@ import { SuperAdminHub } from "@/components/SuperAdminHub";
 import { type OrderRecord } from "@/lib/cart";
 import { PRODUCT_DATA, business } from "@/lib/womania";
 import { getProductImage } from "@/lib/images";
+import {
+  isSupabaseConfigured,
+  fetchCloudOrders,
+  createCloudOrder,
+  updateCloudOrderStatus,
+  subscribeToOrders,
+  fetchCloudEnquiries,
+} from "@/lib/supabase";
+import { SupabaseSyncModal } from "@/components/SupabaseSyncModal";
+import { Database } from "lucide-react";
 
 const ORDERS_STORAGE_KEY = "womania_orders_history_v1";
 const ADMIN_AUTH_KEY = "womania_admin_authenticated";
@@ -171,6 +181,11 @@ export function AdminPage() {
   const [orderFilter, setOrderFilter] = useState<"All" | "Confirmed" | "Processing" | "Dispatched" | "Delivered" | "Cancelled">("All");
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Supabase Cloud Sync States
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [supabaseModalOpen, setSupabaseModalOpen] = useState(false);
+  const [supabaseConnected, setSupabaseConnected] = useState(isSupabaseConfigured());
+
   // Check existing session
   useEffect(() => {
     const existing = getAdminSession();
@@ -188,33 +203,98 @@ export function AdminPage() {
     return () => window.removeEventListener("womania_settings_changed", handleSettingsChange);
   }, []);
 
-  // Load orders from localStorage
-  const refreshOrders = () => {
+  // Load orders from Supabase Cloud (with localStorage cache fallback)
+  const refreshOrders = async () => {
+    setIsSyncing(true);
+    let localOrders: OrderRecord[] = [];
     try {
       const raw = localStorage.getItem(ORDERS_STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setOrders(parsed);
+        localOrders = JSON.parse(raw);
+      }
+    } catch {
+      localOrders = [];
+    }
+
+    if (isSupabaseConfigured()) {
+      try {
+        const cloudRes = await fetchCloudOrders();
+        if (cloudRes.success && Array.isArray(cloudRes.data)) {
+          // Merge: Cloud orders are primary, un-synced local orders are appended & auto-synced
+          const cloudMap = new Map<string, OrderRecord>();
+          cloudRes.data.forEach((o) => cloudMap.set(o.orderId, o));
+
+          localOrders.forEach((lo) => {
+            if (!cloudMap.has(lo.orderId)) {
+              cloudMap.set(lo.orderId, lo);
+              createCloudOrder(lo).catch(() => {});
+            }
+          });
+
+          const merged = Array.from(cloudMap.values());
+          setOrders(merged);
+          try {
+            localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(merged));
+          } catch {}
+          setIsSyncing(false);
           return;
         }
+      } catch (err) {
+        console.warn("Could not fetch orders from Supabase:", err);
       }
-      // If empty, initialize with default boutique seed orders
+    }
+
+    // Local fallback
+    if (localOrders.length > 0) {
+      setOrders(localOrders);
+    } else {
       localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(INITIAL_ORDERS));
       setOrders(INITIAL_ORDERS);
-    } catch {
-      setOrders(INITIAL_ORDERS);
     }
+    setIsSyncing(false);
+  };
+
+  // Load enquiries from Supabase Cloud (with localStorage fallback)
+  const refreshEnquiries = async () => {
+    if (isSupabaseConfigured()) {
+      try {
+        const cloudRes = await fetchCloudEnquiries();
+        if (cloudRes.success && cloudRes.data && cloudRes.data.length > 0) {
+          setEnquiries(cloudRes.data);
+          return;
+        }
+      } catch {}
+    }
+    setEnquiries(getEnquiries());
   };
 
   useEffect(() => {
     if (isAuthenticated) {
       refreshOrders();
+      refreshEnquiries();
       setAnalytics(getAnalyticsData());
-      setEnquiries(getEnquiries());
       setSiteSettings(getSiteSettings());
+
+      // Realtime subscription: whenever a customer places an order on Vercel, Supabase updates us automatically!
+      const unsubscribe = subscribeToOrders(() => {
+        refreshOrders();
+      });
+
+      const handleSupabaseEvent = () => {
+        setSupabaseConnected(isSupabaseConfigured());
+        refreshOrders();
+        refreshEnquiries();
+      };
+
+      window.addEventListener("womania_supabase_changed", handleSupabaseEvent);
+
+      return () => {
+        unsubscribe();
+        window.removeEventListener("womania_supabase_changed", handleSupabaseEvent);
+      };
     }
   }, [isAuthenticated]);
+
 
   // Handle Login (Supports Super Admin 123456789 and Staff Admins)
   const handleLogin = (e: React.FormEvent) => {
@@ -286,21 +366,27 @@ export function AdminPage() {
     } catch {
       // ignore
     }
+
+    // Sync status change to Supabase Cloud
+    updateCloudOrderStatus(orderId, newStatus, cancelReason).catch((err) => {
+      console.warn("Could not sync order status to Supabase:", err);
+    });
   };
 
   // Update enquiry status
   const handleEnquiryStatusChange = (id: string, status: CustomerEnquiry["status"]) => {
     updateEnquiryStatus(id, status);
-    setEnquiries(getEnquiries());
+    setEnquiries((prev) => prev.map((e) => (e.id === id ? { ...e, status } : e)));
   };
 
   // Delete enquiry
   const handleDeleteEnquiry = (id: string) => {
     if (confirm("Are you sure you want to delete this customer enquiry?")) {
       deleteEnquiry(id);
-      setEnquiries(getEnquiries());
+      setEnquiries((prev) => prev.filter((e) => e.id !== id));
     }
   };
+
 
   // Calculations for KPI Cards
   const totalClothesCount = orders.reduce(
@@ -422,6 +508,20 @@ export function AdminPage() {
           </div>
 
           <div className="admin-top-actions">
+            {/* Supabase Cloud Sync Status Button */}
+            <button
+              onClick={() => setSupabaseModalOpen(true)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+                supabaseConnected
+                  ? "bg-emerald-950/70 border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/60"
+                  : "bg-amber-950/70 border-amber-500/50 text-amber-300 hover:bg-amber-900/60 animate-pulse"
+              }`}
+              title="Click to view or configure Supabase Cloud Database"
+            >
+              <Database size={13} className={supabaseConnected ? "text-emerald-400" : "text-amber-400"} />
+              <span>{supabaseConnected ? "🟢 Supabase Cloud Active" : "⚡ Link Supabase Cloud"}</span>
+            </button>
+
             <Link to="/" className="admin-action-link" target="_blank">
               <span>View Website</span>
               <ExternalLink size={14} />
@@ -592,6 +692,17 @@ export function AdminPage() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => refreshOrders()}
+                  disabled={isSyncing}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#1c1610] border border-[#b8925c]/40 text-[#e2c288] text-xs font-semibold hover:bg-[#2a2016] transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                  title="Re-sync latest live orders from Supabase"
+                >
+                  <RefreshCw size={13} className={isSyncing ? "animate-spin text-[#e2c288]" : "text-[#b8925c]"} />
+                  <span>{isSyncing ? "Syncing..." : "Sync Live Orders"}</span>
+                </button>
 
                 <div className="admin-status-filters">
                   {(["All", "Confirmed", "Processing", "Dispatched", "Delivered", "Cancelled"] as const).map((st) => (
@@ -979,6 +1090,18 @@ export function AdminPage() {
           </section>
         )}
       </main>
+
+      {/* Supabase Cloud Connection & Setup Modal */}
+      <SupabaseSyncModal
+        isOpen={supabaseModalOpen}
+        onClose={() => setSupabaseModalOpen(false)}
+        onConfigUpdated={() => {
+          setSupabaseConnected(isSupabaseConfigured());
+          refreshOrders();
+          refreshEnquiries();
+        }}
+      />
     </div>
   );
 }
+

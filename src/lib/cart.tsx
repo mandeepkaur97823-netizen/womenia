@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from "react";
 import { type Product, business, whatsappHref } from "@/lib/womania";
+import { createCloudOrder, updateCloudOrderStatus, fetchCloudOrdersByQuery } from "@/lib/supabase";
 
 export type CartItem = {
   itemKey: string;
@@ -72,6 +73,7 @@ type CartContextType = {
   cancelOrder: (orderId: string, reason?: string) => boolean;
   updateOrderStatus: (orderId: string, status: OrderStatus, reason?: string) => boolean;
   getOrdersByQuery: (query: string) => OrderRecord[];
+  getOrdersByQueryAsync: (query: string) => Promise<OrderRecord[]>;
   isTrackerOpen: boolean;
   openTracker: (query?: string) => void;
   closeTracker: () => void;
@@ -269,6 +271,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setRecentOrder(newOrder);
     setPastOrders((prev) => [newOrder, ...prev]);
 
+    // Asynchronously sync to Supabase Cloud so Admin panel on any device sees it immediately
+    createCloudOrder(newOrder).catch((err) => {
+      console.warn("Could not sync order to Supabase cloud:", err);
+    });
+
     // Clear cart if this was a cart order
     if (!directCheckoutItem) {
       clearCart();
@@ -323,6 +330,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       return updated;
     });
 
+    // Asynchronously sync cancellation to Supabase Cloud
+    updateCloudOrderStatus(orderId, "Cancelled", reason).catch((err) => {
+      console.warn("Could not sync order cancellation to Supabase:", err);
+    });
+
     if (recentOrder && recentOrder.orderId === orderId) {
       setRecentOrder((prev) =>
         prev
@@ -373,6 +385,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       return updated;
     });
 
+    // Asynchronously sync status change to Supabase Cloud
+    updateCloudOrderStatus(orderId, newStatus, reason).catch((err) => {
+      console.warn("Could not sync order status to Supabase:", err);
+    });
+
     if (recentOrder && recentOrder.orderId === orderId) {
       setRecentOrder((prev) =>
         prev
@@ -412,6 +429,26 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const getOrdersByQueryAsync = async (query: string): Promise<OrderRecord[]> => {
+    const local = getOrdersByQuery(query);
+    try {
+      const cloud = await fetchCloudOrdersByQuery(query);
+      if (cloud && cloud.length > 0) {
+        const map = new Map<string, OrderRecord>();
+        cloud.forEach((o) => map.set(o.orderId, o));
+        local.forEach((o) => {
+          if (!map.has(o.orderId)) {
+            map.set(o.orderId, o);
+          }
+        });
+        return Array.from(map.values());
+      }
+    } catch {
+      // ignore network errors
+    }
+    return local;
+  };
+
   return (
     <CartContext.Provider
       value={{
@@ -436,6 +473,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         cancelOrder,
         updateOrderStatus,
         getOrdersByQuery,
+        getOrdersByQueryAsync,
+
         isTrackerOpen,
         openTracker,
         closeTracker,
