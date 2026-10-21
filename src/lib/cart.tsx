@@ -1,6 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from "react";
 import { type Product, business, whatsappHref } from "@/lib/womania";
-import { createCloudOrder, updateCloudOrderStatus, fetchCloudOrdersByQuery } from "@/lib/supabase";
+import {
+  createCloudOrder,
+  updateCloudOrderStatus,
+  deleteCloudOrder,
+  fetchCloudOrdersByQuery,
+  getDeletedOrderIds,
+  markOrderAsDeleted,
+  markOrdersAsDeleted,
+} from "@/lib/supabase";
 
 export type CartItem = {
   itemKey: string;
@@ -74,6 +82,8 @@ type CartContextType = {
   updateOrderStatus: (orderId: string, status: OrderStatus, reason?: string) => boolean;
   getOrdersByQuery: (query: string) => OrderRecord[];
   getOrdersByQueryAsync: (query: string) => Promise<OrderRecord[]>;
+  deleteOrder: (orderId: string) => boolean;
+  clearAllOrders: () => void;
   isTrackerOpen: boolean;
   openTracker: (query?: string) => void;
   closeTracker: () => void;
@@ -103,12 +113,39 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (savedCart) setCart(JSON.parse(savedCart));
 
       const savedOrders = localStorage.getItem(ORDERS_STORAGE_KEY);
-      if (savedOrders) setPastOrders(JSON.parse(savedOrders));
+      if (savedOrders) {
+        const parsed: OrderRecord[] = JSON.parse(savedOrders);
+        const deletedIds = getDeletedOrderIds();
+        setPastOrders(parsed.filter((o) => !deletedIds.has(o.orderId) && o.status !== "Deleted"));
+      }
     } catch {
       // Ignore storage read error
     } finally {
       setIsLoaded(true);
     }
+  }, []);
+
+  // Listen for orders changed event (e.g. from Admin deletion or sync)
+  useEffect(() => {
+    const handleOrdersSync = () => {
+      try {
+        const savedOrders = localStorage.getItem(ORDERS_STORAGE_KEY);
+        if (savedOrders) {
+          const parsed: OrderRecord[] = JSON.parse(savedOrders);
+          const deletedIds = getDeletedOrderIds();
+          setPastOrders(parsed.filter((o) => !deletedIds.has(o.orderId) && o.status !== "Deleted"));
+        } else {
+          setPastOrders([]);
+        }
+      } catch {}
+    };
+
+    window.addEventListener("womania_orders_changed", handleOrdersSync);
+    window.addEventListener("storage", handleOrdersSync);
+    return () => {
+      window.removeEventListener("womania_orders_changed", handleOrdersSync);
+      window.removeEventListener("storage", handleOrdersSync);
+    };
   }, []);
 
   // Persist cart to localStorage once loaded
@@ -125,7 +162,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isLoaded) return;
     try {
-      localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(pastOrders));
+      const deletedIds = getDeletedOrderIds();
+      const sanitized = pastOrders.filter((o) => !deletedIds.has(o.orderId) && o.status !== "Deleted");
+      localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(sanitized));
     } catch (e) {
       console.warn("Could not save orders to localStorage", e);
     }
@@ -408,6 +447,41 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     return changed;
   };
 
+  const deleteOrder = (orderId: string): boolean => {
+    markOrderAsDeleted(orderId);
+    let changed = false;
+    setPastOrders((prev) => {
+      const updated = prev.filter((o) => o.orderId !== orderId);
+      if (updated.length !== prev.length) changed = true;
+      try {
+        localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updated));
+        if (updated.length === 0) {
+          localStorage.setItem("womania_orders_cleared_v1", "true");
+        }
+      } catch {}
+      return updated;
+    });
+
+    if (recentOrder && recentOrder.orderId === orderId) {
+      setRecentOrder(null);
+    }
+
+    deleteCloudOrder(orderId).catch(() => {});
+    return changed;
+  };
+
+  const clearAllOrders = (): void => {
+    const allIds = pastOrders.map((o) => o.orderId);
+    markOrdersAsDeleted(allIds);
+    setPastOrders([]);
+    setRecentOrder(null);
+    try {
+      localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify([]));
+      localStorage.setItem("womania_orders_cleared_v1", "true");
+    } catch {}
+    allIds.forEach((id) => deleteCloudOrder(id).catch(() => {}));
+  };
+
   const getOrdersByQuery = (query: string): OrderRecord[] => {
     const trimmed = query.trim().toLowerCase();
     if (!trimmed) return [];
@@ -472,6 +546,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         clearRecentOrder,
         cancelOrder,
         updateOrderStatus,
+        deleteOrder,
+        clearAllOrders,
         getOrdersByQuery,
         getOrdersByQueryAsync,
 

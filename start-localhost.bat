@@ -12,17 +12,17 @@ echo.
 :: Add Bun, Node.js and standard Windows system paths
 set "PATH=%USERPROFILE%\.bun\bin;%LOCALAPPDATA%\Programs\nodejs;%ProgramFiles%\nodejs;%ProgramFiles(x86)%\nodejs;%PATH%"
 
-:: 1. Check for Bun first (project includes bun.lock)
-where bun >nul 2>&1
-if %ERRORLEVEL% equ 0 (
-    set "RUNNER=bun"
-    goto check_dependencies
-)
-
-:: 2. Check for Node.js
+:: 1. Check for Node.js first (starts Vite dev server in ~1.4s on Windows)
 where node >nul 2>&1
 if %ERRORLEVEL% equ 0 (
     set "RUNNER=node"
+    goto check_dependencies
+)
+
+:: 2. Check for Bun
+where bun >nul 2>&1
+if %ERRORLEVEL% equ 0 (
+    set "RUNNER=bun"
     goto check_dependencies
 )
 

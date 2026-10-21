@@ -78,7 +78,7 @@ CREATE POLICY "Public can update orders" ON public.orders
     FOR UPDATE USING (true);
 
 CREATE POLICY "Public can delete orders" ON public.orders
-    FOR DELETE USING (true);
+    FOR DELETE TO anon, authenticated, public USING (true);
 
 
 -- Enquiries policies
@@ -92,7 +92,7 @@ CREATE POLICY "Public can update enquiries" ON public.enquiries
     FOR UPDATE USING (true);
 
 CREATE POLICY "Public can delete enquiries" ON public.enquiries
-    FOR DELETE USING (true);
+    FOR DELETE TO anon, authenticated, public USING (true);
 
 -- 4. Enable Realtime updates so Admin receives live order alerts automatically
 DO $$

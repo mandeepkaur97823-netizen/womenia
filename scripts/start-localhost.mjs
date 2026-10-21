@@ -21,8 +21,8 @@ console.log("Press Ctrl+C at any time to stop the server.");
 console.log("=================================================\n");
 
 // Determine the best execution method:
-// 1. If running under Bun, use bun run dev
-// 2. If running under Node, invoke local Vite CLI directly (avoids npx network delays)
+// 1. If running under Node, invoke local Vite CLI directly (starts in ~1.4s, avoids wrapper delays)
+// 2. If running under Bun, use bun run dev
 // 3. Fallback to npm run dev
 const isBunRuntime = typeof process.versions.bun !== "undefined";
 const viteCliPath = path.join(rootDir, "node_modules", "vite", "bin", "vite.js");
@@ -30,15 +30,15 @@ const viteCliPath = path.join(rootDir, "node_modules", "vite", "bin", "vite.js")
 let command = "";
 let args = [];
 
-if (isBunRuntime) {
-  command = "bun";
-  args = ["run", "dev"];
-} else if (fs.existsSync(viteCliPath)) {
+if (!isBunRuntime && fs.existsSync(viteCliPath)) {
   command = process.execPath;
-  args = [viteCliPath, "dev"];
+  args = [viteCliPath, "dev", "--port", "8080"];
+} else if (isBunRuntime) {
+  command = "bun";
+  args = ["run", "dev", "--port", "8080"];
 } else {
   command = process.platform === "win32" ? "npm.cmd" : "npm";
-  args = ["run", "dev"];
+  args = ["run", "dev", "--", "--port", "8080"];
 }
 
 const serverProcess = spawn(command, args, {

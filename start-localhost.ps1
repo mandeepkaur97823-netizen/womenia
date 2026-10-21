@@ -10,16 +10,16 @@ Write-Host "         WOMANIA BOUTIQUE - LOCALHOST SERVER     " -ForegroundColor 
 Write-Host "=================================================" -ForegroundColor DarkYellow
 Write-Host ""
 
-$hasBun = Get-Command bun -ErrorAction SilentlyContinue
 $hasNode = Get-Command node -ErrorAction SilentlyContinue
+$hasBun = Get-Command bun -ErrorAction SilentlyContinue
 
-if ($hasBun) {
-    $runner = "bun"
-} elseif ($hasNode) {
+if ($hasNode) {
     $runner = "node"
+} elseif ($hasBun) {
+    $runner = "bun"
 } else {
-    Write-Host "[ERROR] Neither Bun nor Node.js was found in PATH." -ForegroundColor Red
-    Write-Host "Please install Bun (https://bun.sh) or Node.js (https://nodejs.org)." -ForegroundColor Yellow
+    Write-Host "[ERROR] Neither Node.js nor Bun was found in PATH." -ForegroundColor Red
+    Write-Host "Please install Node.js (https://nodejs.org) or Bun (https://bun.sh)." -ForegroundColor Yellow
     Pause
     exit 1
 }

@@ -68,6 +68,10 @@ import {
   createCloudOrder,
   updateCloudOrderStatus,
   deleteCloudOrder,
+  clearAllCloudOrders,
+  getDeletedOrderIds,
+  markOrderAsDeleted,
+  markOrdersAsDeleted,
   subscribeToOrders,
   fetchCloudEnquiries,
 } from "@/lib/supabase";
@@ -208,11 +212,13 @@ export function AdminPage() {
   // Load orders from Supabase Cloud (with localStorage cache fallback)
   const refreshOrders = async () => {
     setIsSyncing(true);
+    const deletedIds = getDeletedOrderIds();
     let localOrders: OrderRecord[] = [];
     try {
       const raw = localStorage.getItem(ORDERS_STORAGE_KEY);
       if (raw) {
-        localOrders = JSON.parse(raw);
+        const parsed: OrderRecord[] = JSON.parse(raw);
+        localOrders = parsed.filter((o) => !deletedIds.has(o.orderId) && o.status !== "Deleted");
       }
     } catch {
       localOrders = [];
@@ -222,12 +228,17 @@ export function AdminPage() {
       try {
         const cloudRes = await fetchCloudOrders();
         if (cloudRes.success && Array.isArray(cloudRes.data)) {
-          // Merge: Cloud orders are primary, un-synced local orders are appended & auto-synced
+          // Cloud orders are already filtered against deletedIds and status !== 'Deleted'
           const cloudMap = new Map<string, OrderRecord>();
-          cloudRes.data.forEach((o) => cloudMap.set(o.orderId, o));
+          cloudRes.data.forEach((o) => {
+            if (!deletedIds.has(o.orderId) && o.status !== "Deleted") {
+              cloudMap.set(o.orderId, o);
+            }
+          });
 
+          // Append only local orders that are active and not deleted
           localOrders.forEach((lo) => {
-            if (!cloudMap.has(lo.orderId)) {
+            if (!deletedIds.has(lo.orderId) && lo.status !== "Deleted" && !cloudMap.has(lo.orderId)) {
               cloudMap.set(lo.orderId, lo);
               createCloudOrder(lo).catch(() => {});
             }
@@ -250,8 +261,18 @@ export function AdminPage() {
     if (localOrders.length > 0) {
       setOrders(localOrders);
     } else {
-      localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(INITIAL_ORDERS));
-      setOrders(INITIAL_ORDERS);
+      // NEVER resurrect INITIAL_ORDERS if user has cleared orders or deleted any order
+      const hasBeenCleared = localStorage.getItem("womania_orders_cleared_v1") === "true";
+      const hasDeletedIds = deletedIds.size > 0;
+      const rawStored = localStorage.getItem(ORDERS_STORAGE_KEY);
+
+      if (!hasBeenCleared && !hasDeletedIds && rawStored === null) {
+        localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(INITIAL_ORDERS));
+        setOrders(INITIAL_ORDERS);
+      } else {
+        setOrders([]);
+        localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify([]));
+      }
     }
     setIsSyncing(false);
   };
@@ -397,21 +418,51 @@ export function AdminPage() {
 
     if (!window.confirm(confirmMsg)) return;
 
-    // 1. Instant optimistic UI update
+    // 1. Mark as deleted in persistent tombstone immediately
+    markOrderAsDeleted(orderId);
+
+    // 2. Instant optimistic UI update
     const updated = orders.filter((o) => o.orderId !== orderId);
     setOrders(updated);
 
-    // 2. Remove from local storage
+    // 3. Remove from local storage
     try {
       localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updated));
+      if (updated.length === 0) {
+        localStorage.setItem("womania_orders_cleared_v1", "true");
+      }
     } catch {
       // ignore
     }
 
-    // 3. Delete from Supabase Cloud
+    // 4. Delete & mark Deleted in Supabase Cloud
     deleteCloudOrder(orderId).catch((err) => {
       console.warn("Could not delete order from Supabase:", err);
     });
+
+    window.dispatchEvent(new CustomEvent("womania_orders_changed"));
+  };
+
+  // Delete ALL orders permanently from local state, storage, and Supabase Cloud
+  const handleClearAllOrders = () => {
+    if (orders.length === 0) return;
+    const confirmMsg = `Are you sure you want to permanently delete ALL ${orders.length} orders from history and the cloud? This action cannot be undone.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    const allIds = orders.map((o) => o.orderId);
+    markOrdersAsDeleted(allIds);
+    setOrders([]);
+
+    try {
+      localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify([]));
+      localStorage.setItem("womania_orders_cleared_v1", "true");
+    } catch {}
+
+    clearAllCloudOrders(allIds).catch((err) => {
+      console.warn("Could not clear all orders in Supabase:", err);
+    });
+
+    window.dispatchEvent(new CustomEvent("womania_orders_changed"));
   };
 
 
@@ -731,6 +782,18 @@ export function AdminPage() {
                   <RefreshCw size={13} className={isSyncing ? "animate-spin text-[#e2c288]" : "text-[#b8925c]"} />
                   <span>{isSyncing ? "Syncing..." : "Sync Live Orders"}</span>
                 </button>
+
+                {orders.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAllOrders}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-950/40 border border-red-500/40 text-red-300 text-xs font-semibold hover:bg-red-900/60 hover:border-red-500/70 transition-all cursor-pointer shrink-0"
+                    title="Permanently delete all orders history from this device and cloud"
+                  >
+                    <Trash2 size={13} className="text-red-400" />
+                    <span>Clear All Orders ({orders.length})</span>
+                  </button>
+                )}
 
                 <div className="admin-status-filters">
                   {(["All", "Confirmed", "Processing", "Dispatched", "Delivered", "Cancelled"] as const).map((st) => (

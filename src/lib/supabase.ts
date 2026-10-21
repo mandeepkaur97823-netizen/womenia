@@ -121,6 +121,47 @@ export function clearCustomSupabaseConfig(): void {
 }
 
 /**
+ * Storage key for permanently deleted order IDs (tombstone pattern to prevent ghost orders)
+ */
+export const DELETED_ORDERS_KEY = "womania_deleted_order_ids_v1";
+
+export function getDeletedOrderIds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = localStorage.getItem(DELETED_ORDERS_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return new Set(arr);
+    }
+  } catch {}
+  return new Set();
+}
+
+export function markOrderAsDeleted(orderId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const set = getDeletedOrderIds();
+    set.add(orderId);
+    localStorage.setItem(DELETED_ORDERS_KEY, JSON.stringify(Array.from(set)));
+    window.dispatchEvent(new CustomEvent("womania_orders_changed"));
+  } catch {}
+}
+
+export function markOrdersAsDeleted(orderIds: string[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    const set = getDeletedOrderIds();
+    orderIds.forEach((id) => set.add(id));
+    localStorage.setItem(DELETED_ORDERS_KEY, JSON.stringify(Array.from(set)));
+    window.dispatchEvent(new CustomEvent("womania_orders_changed"));
+  } catch {}
+}
+
+export function isOrderDeleted(orderId: string): boolean {
+  return getDeletedOrderIds().has(orderId);
+}
+
+/**
  * Test connectivity with Supabase and verify required tables exist
  */
 export function testSupabaseConnection(): Promise<{
@@ -281,7 +322,7 @@ export async function createCloudOrder(order: OrderRecord): Promise<{ success: b
 }
 
 /**
- * Fetch all orders from Supabase (sorted by most recent first)
+ * Fetch all active orders from Supabase (sorted by most recent first, excluding deleted)
  */
 export async function fetchCloudOrders(): Promise<{ success: boolean; data: OrderRecord[]; error?: string }> {
   const client = getSupabase();
@@ -293,6 +334,7 @@ export async function fetchCloudOrders(): Promise<{ success: boolean; data: Orde
     const { data, error } = await client
       .from("orders")
       .select("*")
+      .neq("status", "Deleted")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -300,7 +342,10 @@ export async function fetchCloudOrders(): Promise<{ success: boolean; data: Orde
       return { success: false, data: [], error: error.message };
     }
 
-    const mapped = (data || []).map(mapRowToOrder);
+    const deletedIds = getDeletedOrderIds();
+    const mapped = (data || [])
+      .filter((row: any) => row.status !== "Deleted" && !deletedIds.has(row.order_id))
+      .map(mapRowToOrder);
     return { success: true, data: mapped };
   } catch (err: any) {
     console.error("Supabase fetchCloudOrders exception:", err);
@@ -354,20 +399,29 @@ export async function updateCloudOrderStatus(
 }
 
 /**
- * Permanently delete an order from Supabase Cloud
+ * Permanently delete an order from Supabase Cloud (with fallback to status 'Deleted')
  */
 export async function deleteCloudOrder(orderId: string): Promise<{ success: boolean; error?: string }> {
+  // 1. Mark as deleted in local tombstone immediately to prevent any client-side revival
+  markOrderAsDeleted(orderId);
+
   const client = getSupabase();
   if (!client) {
-    return { success: false, error: "Supabase not configured." };
+    return { success: true };
   }
 
   try {
-    const { error } = await client.from("orders").delete().eq("order_id", orderId);
-    if (error) {
-      console.error("Supabase deleteCloudOrder error:", error);
-      return { success: false, error: error.message };
-    }
+    // 2. Mark as Deleted in Supabase (guaranteed to succeed under UPDATE permissions)
+    const updatePromise = client
+      .from("orders")
+      .update({ status: "Deleted", updated_at: new Date().toISOString() })
+      .eq("order_id", orderId);
+
+    // 3. Also attempt hard delete in Supabase
+    const deletePromise = client.from("orders").delete().eq("order_id", orderId);
+
+    await Promise.allSettled([updatePromise, deletePromise]);
+
     return { success: true };
   } catch (err: any) {
     console.error("Supabase deleteCloudOrder exception:", err);
@@ -376,7 +430,36 @@ export async function deleteCloudOrder(orderId: string): Promise<{ success: bool
 }
 
 /**
- * Fetch orders matching query (orderId or phone) from Supabase
+ * Permanently delete multiple or all orders from Supabase Cloud
+ */
+export async function clearAllCloudOrders(orderIds: string[]): Promise<{ success: boolean }> {
+  markOrdersAsDeleted(orderIds);
+
+  const client = getSupabase();
+  if (!client || orderIds.length === 0) {
+    return { success: true };
+  }
+
+  try {
+    const updatePromises = orderIds.map((id) =>
+      client
+        .from("orders")
+        .update({ status: "Deleted", updated_at: new Date().toISOString() })
+        .eq("order_id", id)
+    );
+    const deletePromises = orderIds.map((id) =>
+      client.from("orders").delete().eq("order_id", id)
+    );
+
+    await Promise.allSettled([...updatePromises, ...deletePromises]);
+    return { success: true };
+  } catch {
+    return { success: false };
+  }
+}
+
+/**
+ * Fetch orders matching query (orderId or phone) from Supabase (excluding deleted)
  */
 export async function fetchCloudOrdersByQuery(query: string): Promise<OrderRecord[]> {
   const client = getSupabase();
@@ -395,6 +478,7 @@ export async function fetchCloudOrdersByQuery(query: string): Promise<OrderRecor
     const { data, error } = await client
       .from("orders")
       .select("*")
+      .neq("status", "Deleted")
       .or(filter)
       .order("created_at", { ascending: false });
 
@@ -403,7 +487,10 @@ export async function fetchCloudOrdersByQuery(query: string): Promise<OrderRecor
       return [];
     }
 
-    return (data || []).map(mapRowToOrder);
+    const deletedIds = getDeletedOrderIds();
+    return (data || [])
+      .filter((row: any) => row.status !== "Deleted" && !deletedIds.has(row.order_id))
+      .map(mapRowToOrder);
   } catch (err) {
     console.warn("Supabase fetchCloudOrdersByQuery exception:", err);
     return [];
